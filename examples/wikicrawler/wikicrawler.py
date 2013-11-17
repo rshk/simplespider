@@ -9,10 +9,11 @@ import urlparse
 import requests
 import lxml.html
 
-from simplespider import Spider, ScrapingTask, DownloadTask, BaseObject
+from simplespider import DictStorageSpider, ScrapingTask, DownloadTask, \
+    BaseObject, SkipRunner
 
 
-spider = Spider()
+spider = DictStorageSpider()
 
 wikipedia_home_re = ''.join(('^', re.escape('http://en.wikipedia.org'), '/?$'))
 wikipedia_page_re = ''.join((
@@ -33,7 +34,7 @@ def is_wikipedia_page(url):
     if len(path) < 3:  # ['', 'wiki', 'Title']
         return False
     for x in ('Talk:', 'Help:', 'Category:', 'Template:', 'Wikipedia:',
-              'User:', 'Portal:', 'Special:'):
+              'User:', 'Portal:', 'Special:', 'File:'):
         if path[2].startswith(x):
             return False
     return True
@@ -50,8 +51,7 @@ class WikipediaLink(BaseObject):
             self.url_from, self.url_to)
 
 
-@spider.downloader(
-    urls=[wikipedia_re])
+@spider.downloader(urls=[wikipedia_re])
 def wikipedia_downloader(task):
     assert isinstance(task, DownloadTask)
     yield ScrapingTask(
@@ -60,11 +60,12 @@ def wikipedia_downloader(task):
         tags=['wikipedia'])
 
 
-@spider.scraper(
-    urls=[wikipedia_re],
-    tags=['wikipedia'])
+@spider.scraper(urls=[wikipedia_page_re], tags=['wikipedia'])
 def wikipedia_scraper(task):
     assert isinstance(task, ScrapingTask)
+    if not is_wikipedia_page(task.url):
+        ## This is not a page we like..
+        raise SkipRunner()
     tree = lxml.html.fromstring(task.response.content)
     el = tree.xpath('//h1[@id="firstHeading"]')[0]
     yield WikipediaPage(url=task.url, title=el.text_content())
@@ -74,7 +75,17 @@ def wikipedia_scraper(task):
     for link in links:
         if is_wikipedia_page(link):
             yield WikipediaLink(url_from=base_url, url_to=link)
-        yield DownloadTask(link, tags=['wikipedia'])
+
+
+@spider.scraper
+def simple_link_extractor(task):
+    assert isinstance(task, ScrapingTask)
+    tree = lxml.html.fromstring(task.response.content)
+    base_url = task.url
+    links = set(clean_url(urlparse.urljoin(base_url, x))
+                for x in tree.xpath('//a/@href'))
+    for link in links:
+        yield DownloadTask(url=link)
 
 
 if __name__ == '__main__':
