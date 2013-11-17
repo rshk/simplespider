@@ -25,9 +25,19 @@ def test_base_task_functionality(task_class):
     assert 'hello' in iterated
     assert 'foo' in iterated
 
+    keys = task.keys()
+    assert isinstance(keys, list)
+    assert 'hello' in keys
+    assert 'foo' in keys
+
     iterated = list(task.iteritems())
     assert ('hello', 'world') in iterated
     assert ('foo', 'bar') in iterated
+
+    items = task.items()
+    assert isinstance(items, list)
+    assert ('hello', 'world') in items
+    assert ('foo', 'bar') in items
 
 
 #@pytest.mark.parametrize('task_class', [BaseTask, DownloadTask, ScrapingTask])
