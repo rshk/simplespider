@@ -14,7 +14,7 @@ Crawlers will:
 * Yield objects found in the page
 """
 
-from collections import defaultdict
+from collections import defaultdict, Mapping
 from functools import wraps
 import anydbm
 import copy
@@ -65,20 +65,77 @@ class SimpleObject(object):
         return self.__class__(**new_kwargs)
 
 
-class BaseTask(SimpleObject):
+class BaseTask(object):
+    __slots__ = ['__attributes']
+
     def __init__(self, **kwargs):
         """
         Base for the spider tasks.
+        Tasks need to be hashable and immutable, so we can be sure,
+        for example, that we don't run the same task twice.
+        Also, we don't want its attributes to be changed at runtime.
 
         :param retry:
             Number of times this task should be retried upon failure.
             Defaults to 2 (for a total of 3 exectutions).
         """
         kwargs.setdefault("retry", 2)
-        self.__dict__.update(kwargs)
+        self.__attributes = frozenset(kwargs.iteritems())
+
+    def __getitem__(self, name):
+        ## We can't benefit from the dict hash table here,
+        ## but anyways the attributes will be just a few..
+        for key, value in self.__attributes:
+            if key == name:
+                return value
+        raise KeyError(name)
+
+    def __iter__(self):
+        return self.iterkeys()
+
+    def __len__(self):
+        return len(self.__attributes)
+
+    def clone(self, **kwargs):
+        new_kwargs = dict(self.__attributes)
+        new_kwargs.update(kwargs)
+        return self.__class__(**new_kwargs)
+
+    def __hash__(self):
+        return hash(self.__attributes)
+
+    def __eq__(self, other):
+        if type(other) != self.__class__:
+            ## Not isinstance() since we want to make sure
+            ## this is the actual class, not just a subclass!
+            return False
+        return self.__attributes == other.__attributes
+
+    def __getstate__(self):
+        return self.__attributes
+
+    def __setstate__(self, state):
+        self.__attributes = state
+
+    def __contains__(self, key):
+        return key in self.iterkeys()
+
+    def keys(self):
+        return list(self.iterkeys())
+
+    def iterkeys(self):
+        return (x[0] for x in self.__attributes)
+
+    def items(self):
+        return list(self.iteritems())
+
+    def iteritems(self):
+        return ((k, v) for k, v in self.__attributes)
 
 
 class DownloadTask(BaseTask):
+    __slots__ = []
+
     def __init__(self, **kwargs):
         """
         A downloading task.
@@ -92,6 +149,8 @@ class DownloadTask(BaseTask):
 
 
 class ScrapingTask(BaseTask):
+    __slots__ = []
+
     def __init__(self, **kwargs):
         """
         A scraping task.
@@ -181,10 +240,13 @@ class Spider(object):
     def queue_task(self, task):
         self._tasks_queue.append(task)
 
+    def pop_task(self):
+        return self._tasks_queue.pop(0)
+
     def run(self):
         while True:
             try:
-                task = self._tasks_queue.pop(0)
+                task = self.pop_task()
             except IndexError:
                 return  # We're done..
             self.run_task(task)
