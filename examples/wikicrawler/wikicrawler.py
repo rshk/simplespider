@@ -27,17 +27,26 @@ def clean_url(url):
 
 
 def is_wikipedia_page(url):
+    """
+    Check whether this is page is part of wikipedia "interesting"
+    pages (ie. the ones matching the above regexp)
+    """
     if not re.match(wikipedia_page_re, url):
         return False
+    return True
+
+
+def is_special_page(url):
+    """Check whether this wikipedia page is a "special" page"""
     p = urlparse.urlparse(url)
     path = p.path.split('/')
-    if len(path) < 3:  # ['', 'wiki', 'Title']
-        return False
+    assert len(path) >= 3
+    assert path[:2] == ['', 'wiki']
     for x in ('Talk:', 'Help:', 'Category:', 'Template:', 'Wikipedia:',
               'User:', 'Portal:', 'Special:', 'File:'):
         if path[2].startswith(x):
-            return False
-    return True
+            return True
+    return False
 
 
 class WikipediaPage(BaseObject):
@@ -54,6 +63,8 @@ class WikipediaLink(BaseObject):
 @spider.downloader(urls=[wikipedia_re])
 def wikipedia_downloader(task):
     assert isinstance(task, DownloadTask)
+    if is_wikipedia_page(task.url) and is_special_page(task.url):
+        raise SkipRunner()
     yield ScrapingTask(
         url=task.url,
         response=requests.get(task.url),
@@ -63,8 +74,8 @@ def wikipedia_downloader(task):
 @spider.scraper(urls=[wikipedia_page_re], tags=['wikipedia'])
 def wikipedia_scraper(task):
     assert isinstance(task, ScrapingTask)
-    if not is_wikipedia_page(task.url):
-        ## This is not a page we like..
+    if is_special_page(task.url):
+        ## We only process normal pages
         raise SkipRunner()
     tree = lxml.html.fromstring(task.response.content)
     el = tree.xpath('//h1[@id="firstHeading"]')[0]
@@ -73,7 +84,7 @@ def wikipedia_scraper(task):
     links = set(clean_url(urlparse.urljoin(base_url, x))
                 for x in tree.xpath('//a/@href'))
     for link in links:
-        if is_wikipedia_page(link):
+        if is_wikipedia_page(link) and (not is_special_page(link)):
             yield WikipediaLink(url_from=base_url, url_to=link)
 
 
