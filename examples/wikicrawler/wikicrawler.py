@@ -20,7 +20,7 @@ wikipedia_page_re = ''.join((
 wikipedia_re = '|'.join((wikipedia_home_re, wikipedia_page_re))
 
 
-def clean_url(self, url):
+def clean_url(url):
     ## Strip any #fragment part
     return url.split('#', 1)[0]
 
@@ -28,6 +28,15 @@ def clean_url(self, url):
 def is_wikipedia_page(url):
     if not re.match(wikipedia_page_re, url):
         return False
+    p = urlparse.urlparse(url)
+    path = p.path.split('/')
+    if len(path) < 3:  # ['', 'wiki', 'Title']
+        return False
+    for x in ('Talk:', 'Help:', 'Category:', 'Template:', 'Wikipedia:',
+              'User:', 'Portal:', 'Special:'):
+        if path[2].startswith(x):
+            return False
+    return True
 
 
 class WikipediaPage(BaseObject):
