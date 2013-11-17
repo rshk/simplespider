@@ -14,10 +14,11 @@ Crawlers will:
 * Yield objects found in the page
 """
 
-import anydbm
 from collections import defaultdict
-import copy
 from functools import wraps
+import anydbm
+import copy
+import json
 import logging
 import re
 import sys
@@ -114,7 +115,6 @@ class BaseObject(SimpleObject):
         return copy.deepcopy(self.__dict__)
 
     def to_json(self):
-        import json
         return json.dumps(self.__dict__)
 
 
@@ -294,7 +294,7 @@ class Spider(object):
 
 class DictStorage(object):
     def __init__(self):
-        self._storage_dict = defaultdict(list)
+        self._storage = defaultdict(list)
 
     def save(self, obj):
         self._storage[type(obj).__name__].append(obj)
@@ -309,4 +309,4 @@ class AnydbmStorage(object):
         obj._type = type(obj).__name__
         obj._id = getattr(obj, 'id', None) or str(uuid.uuid4())
         storage_key = "{0}.{1}".format(obj._type, obj._id)
-        self._storage[storage_key] = obj.export()
+        self._storage[storage_key] = json.dumps(obj.export())
