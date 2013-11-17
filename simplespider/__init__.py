@@ -14,12 +14,14 @@ Crawlers will:
 * Yield objects found in the page
 """
 
+import anydbm
 from collections import defaultdict
 import copy
 from functools import wraps
 import logging
 import re
 import sys
+import uuid
 
 
 logger = logging.getLogger(__name__)
@@ -108,6 +110,13 @@ class BaseObject(SimpleObject):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
+    def export(self):
+        return copy.deepcopy(self.__dict__)
+
+    def to_json(self):
+        import json
+        return json.dumps(self.__dict__)
+
 
 class RetryTask(Exception):
     """Ask for the task to be retrieved"""
@@ -125,13 +134,19 @@ class SkipRunner(Exception):
 
 
 class Spider(object):
-    def __init__(self):
+    def __init__(self, **kwargs):
+        self.conf = kwargs
+
+        ## Registers of downloaders and scrapers
         self._downloaders = []
         self._scrapers = []
+
         ## Keep a list of already downloaded
         ## URLs to prevent infinite recursion.
         ## todo: we need a smarter way to do this..
         self._already_done = set()
+
+        ## Queue for tasks to be run
         self._tasks_queue = []
 
     def _register_decorator(self, register, func=None, **kw):
@@ -269,13 +284,29 @@ class Spider(object):
 
     def _store(self, obj):
         logger.debug("Storing object: {0!r}".format(obj))
+        if self._storage is not None:
+            self._storage.save(obj)
+
+    @property
+    def _storage(self):
+        return self.conf.get('storage')
 
 
-class DictStorageSpider(Spider):
+class DictStorage(object):
     def __init__(self):
-        super(DictStorageSpider, self).__init__()
-        self._storage = defaultdict(list)
+        self._storage_dict = defaultdict(list)
 
-    def _store(self, obj):
-        super(DictStorageSpider, self)._store(obj)
+    def save(self, obj):
         self._storage[type(obj).__name__].append(obj)
+
+
+class AnydbmStorage(object):
+    def __init__(self, path):
+        self._storage_path = path
+        self._storage = anydbm.open(path, 'c')
+
+    def save(self, obj):
+        obj._type = type(obj).__name__
+        obj._id = getattr(obj, 'id', None) or str(uuid.uuid4())
+        storage_key = "{0}.{1}".format(obj._type, obj._id)
+        self._storage[storage_key] = obj.export()

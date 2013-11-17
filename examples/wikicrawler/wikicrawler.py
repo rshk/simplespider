@@ -3,17 +3,18 @@ Example crawler for Wikipedia
 """
 
 import re
+import sys
 import urlparse
 
 ## pip install requests lxml
 import requests
 import lxml.html
 
-from simplespider import DictStorageSpider, ScrapingTask, DownloadTask, \
-    BaseObject, SkipRunner
+from simplespider import Spider, DictStorage, AnydbmStorage, \
+    ScrapingTask, DownloadTask, BaseObject, SkipRunner
 
 
-spider = DictStorageSpider()
+spider = Spider()
 
 wikipedia_home_re = ''.join(('^', re.escape('http://en.wikipedia.org'), '/?$'))
 wikipedia_page_re = ''.join((
@@ -50,14 +51,11 @@ def is_special_page(url):
 
 
 class WikipediaPage(BaseObject):
-    def __repr__(self):
-        return "WikipediaPage({0!r}, {1!r})".format(self.url, self.title)
+    pass
 
 
 class WikipediaLink(BaseObject):
-    def __repr__(self):
-        return "WikipediaLink({0!r} -> {1!r})".format(
-            self.url_from, self.url_to)
+    pass
 
 
 @spider.downloader(urls=[wikipedia_re])
@@ -101,11 +99,19 @@ def simple_link_extractor(task):
 
 if __name__ == '__main__':
     try:
+        ## Prepare the storage
+        if len(sys.argv) > 1:
+            storage = AnydbmStorage(sys.argv[1])
+        else:
+            storage = DictStorage()
+        spider.conf['storage'] = storage
+
+        ## Queue the first task
         task = DownloadTask(url='http://en.wikipedia.org')
         spider.queue_task(task)
+
+        ## Run!
         spider.run()
+
     except KeyboardInterrupt:
-        print("\n\n----\nTerminated by user.\nPrinting report\n")
-        for table in spider._storage:
-            print("{0}: {1} objects".format(
-                table, len(spider._storage[table])))
+        print("\n\n----\nTerminated by the user.")
