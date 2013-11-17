@@ -14,7 +14,20 @@ from simplespider import Spider, ScrapingTask, DownloadTask, BaseObject
 
 spider = Spider()
 
-wikipedia_re = ''.join(('^', re.escape('http://en.wikipedia.org'), '.*'))
+wikipedia_home_re = ''.join(('^', re.escape('http://en.wikipedia.org'), '/?$'))
+wikipedia_page_re = ''.join((
+    '^', re.escape('http://en.wikipedia.org/wiki/'), '.*'))
+wikipedia_re = '|'.join((wikipedia_home_re, wikipedia_page_re))
+
+
+def clean_url(self, url):
+    ## Strip any #fragment part
+    return url.split('#', 1)[0]
+
+
+def is_wikipedia_page(url):
+    if not re.match(wikipedia_page_re, url):
+        return False
 
 
 class WikipediaPage(BaseObject):
@@ -47,10 +60,10 @@ def wikipedia_scraper(task):
     el = tree.xpath('//h1[@id="firstHeading"]')[0]
     yield WikipediaPage(url=task.url, title=el.text_content())
     base_url = task.url
-    links = set(urlparse.urljoin(base_url, x)
+    links = set(clean_url(urlparse.urljoin(base_url, x))
                 for x in tree.xpath('//a/@href'))
     for link in links:
-        if re.match(wikipedia_re, link):
+        if is_wikipedia_page(link):
             yield WikipediaLink(url_from=base_url, url_to=link)
         yield DownloadTask(link, tags=['wikipedia'])
 
@@ -61,7 +74,7 @@ if __name__ == '__main__':
         spider.queue_task(task)
         spider.run()
     except KeyboardInterrupt:
-        print("\n\n----\nTerminated by user.\nPrinting report\n\n")
+        print("\n\n----\nTerminated by user.\nPrinting report\n")
         for table in spider._storage:
             print("{0}: {1} objects".format(
                 table, len(spider._storage[table])))
