@@ -5,6 +5,7 @@ from setuptools.command.test import test as TestCommand
 
 version = '0.1'
 install_requires = [
+    'six',
     'requests',
 ]
 tests_require = [

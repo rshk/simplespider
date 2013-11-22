@@ -54,6 +54,12 @@ def test_tasks_are_immutable(task_class):
         task['url'] = 'http://www.example.org'
 
     with pytest.raises(TypeError):
+        task.update({'url': 'http://www.example.org'})
+
+    with pytest.raises(TypeError):
+        task.__setitem__('url', 'http://www.example.org')
+
+    with pytest.raises(TypeError):
         del task['url']
 
     # Lists are not hashable
@@ -117,7 +123,7 @@ def test_task_comparison(task_class):
 
     ## Test comparison with different class, same arguments
     for task_class_2 in (BaseTask, DownloadTask, ScrapingTask):
-        if type(task_class) != task_class_2:
+        if task_class != task_class_2:
             assert task_class(url='http://www.example.com') != \
                 task_class_2(url='http://www.example.com')
 
@@ -143,6 +149,7 @@ def test_multi_task_set():
     ))) == 4
 
 
+#@pytest.mark.xfail
 def test_mutable_hack(task_class):
     """
     This is a known quirk: we can still mutate the task,
@@ -152,18 +159,18 @@ def test_mutable_hack(task_class):
 
     task = task_class(foo='bar')
 
+    ## This is immutable, right?
     with pytest.raises(TypeError):
         task['foo'] = 'baz'
 
-    ## Let's hack this..
-    task._BaseTask__attributes = frozenset((('foo', 'baz'), ('spam', 'eggs')))
+    ## Ok, but everything can be hacked..
+    dict.__setitem__(task, 'foo', 'baz')
+    dict.update(task, {'spam': 'eggs'})
     assert task['foo'] == 'baz'
     assert task['spam'] == 'eggs'
 
-    ## Even worse, we can do this:
-    task._BaseTask__attributes = 'F*ck you!'
-    with pytest.raises(ValueError):
-        assert task['foo'] == 'baz'  # :(
+    ## This is "moderatly" bad, as nobody is supposed
+    ## to *ever* do this..
 
 
 def test_task_serialization(task_class):

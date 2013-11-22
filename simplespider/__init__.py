@@ -14,7 +14,7 @@ Crawlers will:
 * Yield objects found in the page
 """
 
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from functools import wraps
 import anydbm
 import copy
@@ -23,6 +23,8 @@ import logging
 import re
 import sys
 import uuid
+
+import six
 
 
 logger = logging.getLogger(__name__)
@@ -40,8 +42,8 @@ logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
 
-class BaseTask(object):
-    __slots__ = ['__attributes']
+class BaseTask(dict):
+    __slots__ = []
 
     def __init__(self, **kwargs):
         """
@@ -55,56 +57,59 @@ class BaseTask(object):
             Defaults to 2 (for a total of 3 exectutions).
         """
         kwargs.setdefault("retry", 2)
-        self.__attributes = frozenset(kwargs.iteritems())
+        super(BaseTask, self).update(copy.deepcopy(kwargs))
 
-    def __getitem__(self, name):
-        ## We can't benefit from the dict hash table here,
-        ## but anyways the attributes will be just a few..
-        for key, value in self.__attributes:
-            if key == name:
-                return value
-        raise KeyError(name)
+        ## We call hash() here to trigger an exception ASAP
+        ## if some value is not hashable..
+        hash(self)
 
-    def __iter__(self):
-        return self.iterkeys()
+    def __readonly_error(self):
+        raise TypeError("{0}.{1} object is readonly".format(
+            self.__class__.__module__,
+            self.__class__.__name__))
 
-    def __len__(self):
-        return len(self.__attributes)
+    def __setitem__(self, name, value):
+        self.__readonly_error()
+
+    def __delitem__(self, name):
+        self.__readonly_error()
+
+    def update(self, *a, **kw):
+        self.__readonly_error()
+
+    def __copy__(self):
+        return self.__class__(**self)
+
+    def __deepcopy__(self, memo):
+        return self.__class__(**self)
 
     def clone(self, **kwargs):
-        new_kwargs = dict(self.__attributes)
+        new_kwargs = dict(**self)
         new_kwargs.update(kwargs)
         return self.__class__(**new_kwargs)
 
     def __hash__(self):
-        return hash(self.__attributes)
+        return hash(tuple(self.iteritems()))
 
     def __eq__(self, other):
-        ## No need to check for type!
-        # if type(other) != self.__class__:
-        #     return False
-        return self.__attributes == other.__attributes
+        #raise Exception("HERE")
+        return dict(**self) == dict(**other)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __repr__(self):
+        return "{0}.{1}({2})".format(
+            self.__class__.__module__,
+            self.__class__.__name__,
+            ', '.join('{0}={1!r}'.format(k, v)
+                      for k, v in sorted(tuple(self.iteritems()))))
 
     def __getstate__(self):
-        return self.__attributes
+        return dict(**self)
 
     def __setstate__(self, state):
-        self.__attributes = state
-
-    def __contains__(self, key):
-        return key in self.iterkeys()
-
-    def keys(self):
-        return list(self.iterkeys())
-
-    def iterkeys(self):
-        return (x[0] for x in self.__attributes)
-
-    def items(self):
-        return list(self.iteritems())
-
-    def iteritems(self):
-        return ((k, v) for k, v in self.__attributes)
+        dict.update(self, state)
 
 
 class DownloadTask(BaseTask):
