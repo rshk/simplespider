@@ -1,0 +1,26 @@
+language: python
+
+branches:
+  except:
+    - gh-pages
+
+python:
+  - "2.7"
+
+env:
+  matrix:
+    - TOXENV=py26
+    - TOXENV=py27
+    - TOXENV=py32
+    - TOXENV=py33
+    - TOXENV=pypy
+
+install:
+  - pip install tox --use-mirrors
+
+script: tox
+
+matrix:
+  allow_failures:
+    - env: TOXENV=py31
+    - env: TOXENV=pypy
