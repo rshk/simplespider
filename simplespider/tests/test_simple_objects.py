@@ -2,7 +2,7 @@
 Tests for the objects retrieved by the spider
 """
 
-import pickle
+import json
 
 import pytest
 
@@ -51,8 +51,8 @@ def test_object_pickling(obj_class):
     assert obj['eggs'] == 'EGGS'
     assert obj['bacon'] == 'BACON'
 
-    pickled = pickle.dumps(obj)
-    unpickled = pickle.loads(pickled)
-    assert unpickled['spam'] == 'SPAM'
-    assert unpickled['eggs'] == 'EGGS'
-    assert unpickled['bacon'] == 'BACON'
+    serialized = json.dumps(obj)
+    unserialized = json.loads(serialized)
+    assert unserialized['spam'] == 'SPAM'
+    assert unserialized['eggs'] == 'EGGS'
+    assert unserialized['bacon'] == 'BACON'

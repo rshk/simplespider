@@ -2,6 +2,8 @@
 Tests for the task objects
 """
 
+import sys
+
 import pytest
 
 from simplespider import BaseTask, DownloadTask, ScrapingTask
@@ -10,6 +12,20 @@ from simplespider import BaseTask, DownloadTask, ScrapingTask
 @pytest.fixture(params=[BaseTask, DownloadTask, ScrapingTask])
 def task_class(request):
     return request.param
+
+
+@pytest.fixture(params=['json', 'pickle', 'msgpack'])
+def serializer_module(request):
+    if request.param == 'json':
+        import json
+        return json
+    elif request.param == 'pickle':
+        if sys.version_info >= (3,):
+            pytest.xfail("Pickling tasks in Python 3 is known not to work")
+        import pickle
+        return pickle
+    else:
+        pytest.skip("Unsupported serializer {0}".format(request.param))
 
 
 def test_base_task_functionality(task_class):
@@ -173,13 +189,12 @@ def test_mutable_hack(task_class):
     ## to *ever* do this..
 
 
-def test_task_serialization(task_class):
-    ## We can pickle tasks
-    import pickle
+def test_task_serialization(task_class, serializer_module):
+    ## We can serialize tasks..
 
     task = task_class(url='http://www.example.com', retry=2)
-    pickled = pickle.dumps(task)
-    task1 = pickle.loads(pickled)
+    serialized = serializer_module.dumps(task)
+    task1 = serializer_module.loads(serialized)
     assert task == task1
     assert task1['url'] == 'http://www.example.com'
     assert task1['retry'] == 2

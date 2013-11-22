@@ -156,7 +156,7 @@ class BaseObject(dict):
         return "{0}({1})".format(
             '.'.join((self.__class__.__module__, self.__class__.__name__)),
             ', '.join('{0}={1!r}'.format(name, value)
-                      for name, value in self.iteritems()))
+                      for name, value in sorted(self.iteritems())))
 
     def __getstate__(self):
         """When pickling, we don't care about attributes"""
