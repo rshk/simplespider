@@ -9,10 +9,6 @@ from simplespider import BaseTask, DownloadTask, ScrapingTask
 from .fixtures import task_class, serializer_module  # noqa
 
 
-
-
-
-
 def test_base_task_functionality(task_class):
     task = task_class(hello='world', foo='bar')
     assert len(task) >= 2  # We have some default attributes too..

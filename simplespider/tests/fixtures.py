@@ -20,8 +20,8 @@ def serializer_module(request):
         import json
         return json
     elif request.param == 'pickle':
-        # if sys.version_info >= (3,):
-        #     pytest.xfail("Pickling tasks in Python 3 is known not to work")
+        if sys.version_info >= (3,):
+            pytest.xfail("Pickling tasks in Python 3 is known not to work")
         import pickle
         return pickle
     else:
