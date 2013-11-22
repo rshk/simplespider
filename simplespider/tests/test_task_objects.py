@@ -123,24 +123,24 @@ def test_task_comparison(task_class):
 
 
 def test_multi_task_set():
-    assert len({
+    assert len(set((
         BaseTask(url='http://www.example.com'),
         BaseTask(url='http://www.example.com'),
-    }) == 1
-    assert len({
+    ))) == 1
+    assert len(set((
         BaseTask(url='http://www.example.com'),
         DownloadTask(url='http://www.example.com'),
         ScrapingTask(url='http://www.example.com'),
         BaseTask(url='http://www.example.com'),
-    }) == 3
-    assert len({
+    ))) == 3
+    assert len(set((
         BaseTask(url='http://www.example.com'),
         BaseTask(url='http://www.example.com', foo='bar'),
         DownloadTask(url='http://www.example.com'),
         ScrapingTask(url='http://www.example.com', foo='bar'),
         BaseTask(url='http://www.example.com'),
         ScrapingTask(url='http://www.example.com', foo='bar'),
-    }) == 4
+    ))) == 4
 
 
 def test_mutable_hack(task_class):
@@ -156,7 +156,7 @@ def test_mutable_hack(task_class):
         task['foo'] = 'baz'
 
     ## Let's hack this..
-    task._BaseTask__attributes = frozenset({('foo', 'baz'), ('spam', 'eggs')})
+    task._BaseTask__attributes = frozenset((('foo', 'baz'), ('spam', 'eggs')))
     assert task['foo'] == 'baz'
     assert task['spam'] == 'eggs'
 
