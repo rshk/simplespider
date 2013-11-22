@@ -2,6 +2,8 @@
 
 A library to build simple yet powerful spiders, in Python.
 
+[![Build Status](https://travis-ci.org/rshk/simplespider.png?branch=master)](https://travis-ci.org/rshk/simplespider)
+
 ## Principles
 
 The project goal is trying to build something that tries not to get
