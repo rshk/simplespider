@@ -58,9 +58,9 @@ class BaseTask(object):
         """
         if not isinstance(task_id, six.string_types):
             raise TypeError("task_id must be a string!")
-        if isinstance(task_id, six.text_type):
-            ## We want binary strings as task ids
-            task_id = task_id.encode('utf-8')
+        # if isinstance(task_id, six.text_type):
+        #     ## We want binary strings as task ids
+        #     task_id = task_id.encode('utf-8')
         self._id = task_id
 
         ## We want to make sure we don't have references
