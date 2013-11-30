@@ -24,6 +24,8 @@ import uuid
 
 import six
 
+__version__ = '0.1a'
+
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stderr)
@@ -96,7 +98,7 @@ class BaseTask(object):
         return self._attributes.update(*a, **kw)
 
     def __repr__(self):
-        return "{0}({1}, {2})".format(
+        return "{0}({1!r}, {2})".format(
             self.type,
             self.id,
             ', '.join('{0}={1!r}'.format(k, v)
@@ -108,11 +110,20 @@ class BaseTask(object):
         attrs['_type'] = self.type
         return attrs
 
-    # def __getstate__(self):
-    #     return dict(**self)
+    def __getstate__(self):
+        """Before pickling"""
+        return dict(id=self._id, attrs=self._attributes)
 
-    # def __setstate__(self, state):
-    #     dict.update(self, state)
+    def __setstate__(self, state):
+        """After pickling"""
+        self._id = state['id']
+        self._attributes = state['attrs']
+
+    def __eq__(self, other):
+        """Comparison is mostly needed for tests"""
+        return ((self.id == other.id)
+                and (self._attributes == other._attributes)
+                and (self.type == other.type))
 
 
 class BaseTaskRunner(object):
@@ -120,10 +131,10 @@ class BaseTaskRunner(object):
         self.conf = kwargs
 
     def match(self, task):
-        pass
+        raise NotImplementedError
 
     def __call__(self, task):
-        pass
+        raise NotImplementedError
 
 
 class BaseObject(dict):
