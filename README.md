@@ -4,24 +4,36 @@ A library to build simple yet powerful spiders, in Python.
 
 [![Build Status](https://travis-ci.org/rshk/simplespider.png?branch=master)](https://travis-ci.org/rshk/simplespider)
 
+-----
+
+**Warning!**
+Big refactoring in progress, tests are still failing.
+Do not trust this thing yet!
+
+-----
+
 ## Principles
 
 The project goal is trying to build something that tries not to get
 in the way of the user, while providing all the desired functionality.
 
-The core is really simple, and acts as a register for "downloading"
-and "crawling" tasks.
+The core is really simple, and acts as a register and dispatcher for tasks.
 
-Downloaders and crawlers are just decorated functions, defined elsewhere.
+Tasks inherit from the ``BaseTask`` class and have a very simple interface:
 
-Tasks are generators that can yield either objects or other tasks.
+* ``match(task)``
 
-Task dispatching is done this way:
+  Returns ``True`` if the task should be run using this runner,
+  ``False`` otherwise.
 
-- For download tasks, a matching downloader (matching the url) is searched.
-  The first one is used.
+* ``__call__(task)``
 
-- For scraping, all the matching scrapers (on url and tags).
+  Run to trigger task execution with this runner.
+
+  This is a generator, yielding objects and/or tasks.
+
+  Also, there are some exceptions that can be raised to control the
+  execution flow (eg. skip/abort/retry the running task).
 
 
 ## Example: extracting relations from wikipedia
@@ -30,92 +42,75 @@ To run the example, you need to ``pip install requests lxml``.
 
 (The full code is available in ``examples/wikicrawler/wikicrawler.py``).
 
-First, we need a bunch of stuff:
+First, we creted our custom task runners:
+
 ```python
-import re
-import urlparse
-import requests
-import lxml.html
-from simplespider import Spider, ScrapingTask, DownloadTask, BaseObject
+class WikipediaDownloader(DownloadTaskRunner):
+    def match(self, task):
+        if not super(WikipediaDownloader, self).match(task):
+            return False
+        if not is_wikipedia_page(task['url']):
+            logger.debug("Not a wikipedia page: " + task['url'])
+            return False
+        if is_special_page(task['url']):
+            logger.debug("This is a special page")
+            return False
+        return True
 ```
 
-Let's instantiate the "container" class:
+This is just a standard downloader, what we added is the filtering
+to make sure we only download pages from Wikipedia.
+
+```python
+class WikipediaScraper(BaseTaskRunner):
+    def match(self, task):
+        if not super(WikipediaScraper, self).match(task):
+            return False
+        if not is_wikipedia_page(task['url']):
+            return False
+        if is_special_page(task['url']):
+            return False
+        return True
+
+    def __call__(self, task):
+        assert self.match(task)
+        content_type = task['response'].headers['Content-type'].split(';')
+        if content_type[0] != 'text/html':
+            return  # Nothing to do here..
+        tree = lxml.html.fromstring(task['response'].content)
+        el = tree.xpath('//h1[@id="firstHeading"]')[0]
+        yield WikipediaPage(url=task['url'], title=el.text_content())
+```
+
+This is our scraper, returning ``WikipediaPage`` objects (only for wikipedia
+pages!)
+
+
+Then, let's create the spider:
+
 ```python
 spider = Spider()
+spider.add_runners([
+    WikipediaDownloader(),
+    WikipediaScraper(),
+    LinkExtractionRunner(),
+])
 ```
 
-Let's define a regular expression to match wikipedia URLs:
+And run!
+
 ```python
-wikipedia_re = ''.join(('^', re.escape('http://en.wikipedia.org'), '.*'))
+task = DownloadTask(url='http://en.wikipedia.org')
+spider.queue_task(task)
+spider.run()
 ```
 
-Ok, now we define a couple objects representing the objects
-we want to retrieve:
-```python
-class WikipediaPage(BaseObject):
-    def __repr__(self):
-        return "WikipediaPage({0!r}, {1!r})".format(self.url, self.title)
-
-
-class WikipediaLink(BaseObject):
-    def __repr__(self):
-        return "WikipediaLink({0!r} -> {1!r})".format(
-            self.url_from, self.url_to)
-```
-
-Let's define our first downloader. It simply downloads the requested
-URL and yields a scraping task:
-```python
-@spider.downloader(
-    urls=[wikipedia_re])
-def wikipedia_downloader(task):
-    assert isinstance(task, DownloadTask)
-    yield ScrapingTask(
-        url=task.url,
-        response=requests.get(task.url),
-        tags=['wikipedia'])
-```
-
-And this is our first scraper: it extracts all links from the page
-and yields another ``DownloadTask`` along with, if the link is
-internal to wikipedia, a ``WikipediaLink`` object:
-```python
-@spider.scraper(
-    urls=[wikipedia_re],
-    tags=['wikipedia'])
-def wikipedia_scraper(task):
-    assert isinstance(task, ScrapingTask)
-    tree = lxml.html.fromstring(task.response.content)
-    el = tree.xpath('//h1[@id="firstHeading"]')[0]
-    yield WikipediaPage(url=task.url, title=el.text_content())
-    base_url = task.url
-    links = set(urlparse.urljoin(base_url, x)
-                for x in tree.xpath('//a/@href'))
-    for link in links:
-        if re.match(wikipedia_re, link):
-            yield WikipediaLink(url_from=base_url, url_to=link)
-        yield DownloadTask(link, tags=['wikipedia'])
-```
-
-Finally, some boilerplate to run the spider:
-```python
-if __name__ == '__main__':
-    try:
-        task = DownloadTask(url='http://en.wikipedia.org')
-        spider.queue_task(task)
-        spider.run()
-    except KeyboardInterrupt:
-        print("\n\n----\nTerminated by user.\nPrinting report\n\n")
-        for table in spider._storage:
-            print("{0}: {1} objects".format(
-                table, len(spider._storage[table])))
-```
-
-The recommended way of executing this is:
+Side note: The recommended way of running the ``wikicrawler.py`` script is:
 
 ```
 % ipython -i wikicrawler.py
 ```
 
-so that, when you Ctrl-C that, you'll drop in the interactive interpreter,
-from which you can play with the ``spider`` object..
+so that, when execution terminates (or you hit ``Ctrl-C``), you'll drop in the
+interactive interpreter, from which you can play with the ``spider`` object
+(and even re-start execution, by calling ``spider.run()``).
