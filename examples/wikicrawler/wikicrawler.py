@@ -2,6 +2,7 @@
 Example crawler for Wikipedia
 """
 
+import logging
 import re
 import sys
 import urlparse
@@ -11,10 +12,12 @@ import requests
 import lxml.html
 
 from simplespider import Spider, DictStorage, AnydbmStorage, \
-    ScrapingTask, DownloadTask, BaseObject, SkipRunner
+    BaseObject, BaseTaskRunner
+from simplespider.web import DownloadTask, DownloadTaskRunner, \
+    ScrapingTask, LinkExtractionRunner
 
+logger = logging.getLogger('simplespider.examples.wikicrawler')
 
-spider = Spider()
 
 wikipedia_home_re = ''.join(('^', re.escape('http://en.wikipedia.org'), '/?$'))
 wikipedia_page_re = ''.join((
@@ -32,7 +35,7 @@ def is_wikipedia_page(url):
     Check whether this is page is part of wikipedia "interesting"
     pages (ie. the ones matching the above regexp)
     """
-    if not re.match(wikipedia_page_re, url):
+    if not re.match(wikipedia_re, url):
         return False
     return True
 
@@ -41,8 +44,10 @@ def is_special_page(url):
     """Check whether this wikipedia page is a "special" page"""
     p = urlparse.urlparse(url)
     path = p.path.split('/')
-    assert len(path) >= 3
-    assert path[:2] == ['', 'wiki']
+    if len(path) < 3:
+        return False
+    if path[:2] != ['', 'wiki']:
+        return False
     for x in ('Talk:', 'Help:', 'Category:', 'Template:', 'Wikipedia:',
               'User:', 'Portal:', 'Special:', 'File:'):
         if path[2].startswith(x):
@@ -58,43 +63,52 @@ class WikipediaLink(BaseObject):
     pass
 
 
-@spider.downloader(urls=[wikipedia_re])
-def wikipedia_downloader(task):
-    assert isinstance(task, DownloadTask)
-    if is_wikipedia_page(task.url) and is_special_page(task.url):
-        raise SkipRunner()
-    yield ScrapingTask(
-        url=task.url,
-        response=requests.get(task.url),
-        tags=['wikipedia'])
+class WikipediaDownloader(DownloadTaskRunner):
+    def match(self, task):
+        if not super(WikipediaDownloader, self).match(task):
+            return False
+        if not is_wikipedia_page(task['url']):
+            logger.debug("Not a wikipedia page: " + task['url'])
+            return False
+        if is_special_page(task['url']):
+            logger.debug("This is a special page")
+            return False
+        return True
+
+    def __call__(self, task):
+        assert self.match(task)
+        yield ScrapingTask(
+            url=task['url'],
+            response=requests.get(task['url']),
+            trail=task.get('trail'))
 
 
-@spider.scraper(urls=[wikipedia_page_re], tags=['wikipedia'])
-def wikipedia_scraper(task):
-    assert isinstance(task, ScrapingTask)
-    if is_special_page(task.url):
-        ## We only process normal pages
-        raise SkipRunner()
-    tree = lxml.html.fromstring(task.response.content)
-    el = tree.xpath('//h1[@id="firstHeading"]')[0]
-    yield WikipediaPage(url=task.url, title=el.text_content())
-    base_url = task.url
-    links = set(clean_url(urlparse.urljoin(base_url, x))
-                for x in tree.xpath('//a/@href'))
-    for link in links:
-        if is_wikipedia_page(link) and (not is_special_page(link)):
-            yield WikipediaLink(url_from=base_url, url_to=link)
+class WikipediaScraper(BaseTaskRunner):
+    def match(self, task):
+        if not super(WikipediaScraper, self).match(task):
+            return False
+        if not is_wikipedia_page(task['url']):
+            return False
+        if is_special_page(task['url']):
+            return False
+        return True
+
+    def __call__(self, task):
+        assert self.match(task)
+        content_type = task['response'].headers['Content-type'].split(';')
+        if content_type[0] != 'text/html':
+            return  # Nothing to do here..
+        tree = lxml.html.fromstring(task['response'].content)
+        el = tree.xpath('//h1[@id="firstHeading"]')[0]
+        yield WikipediaPage(url=task['url'], title=el.text_content())
 
 
-@spider.scraper
-def simple_link_extractor(task):
-    assert isinstance(task, ScrapingTask)
-    tree = lxml.html.fromstring(task.response.content)
-    base_url = task.url
-    links = set(clean_url(urlparse.urljoin(base_url, x))
-                for x in tree.xpath('//a/@href'))
-    for link in links:
-        yield DownloadTask(url=link)
+spider = Spider()
+spider.add_runners([
+    WikipediaDownloader(),
+    WikipediaScraper(),
+    LinkExtractionRunner(),
+])
 
 
 if __name__ == '__main__':
