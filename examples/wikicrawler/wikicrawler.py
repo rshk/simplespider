@@ -75,13 +75,6 @@ class WikipediaDownloader(DownloadTaskRunner):
             return False
         return True
 
-    def __call__(self, task):
-        assert self.match(task)
-        yield ScrapingTask(
-            url=task['url'],
-            response=requests.get(task['url']),
-            trail=task.get('trail'))
-
 
 class WikipediaScraper(BaseTaskRunner):
     def match(self, task):
