@@ -2,15 +2,23 @@
 Web-crawler related stuff
 """
 
-import urlparse
+import cgi
 import logging
+import re
+import urlparse
 
 import lxml
 import requests
+import requests.utils
 
 from simplespider import BaseTask, BaseTaskRunner
 
 logger = logging.getLogger(__name__)
+
+
+def default_user_agent():
+    return ''.join('spydi')
+    return requests.utils.default_user_agent()
 
 
 class DownloadTask(BaseTask):
@@ -48,7 +56,9 @@ class ScrapingTask(BaseTask):
 
 class DownloadTaskRunner(BaseTaskRunner):
     def __init__(self, **kwargs):
-        kwargs.setdefault('max_depth', 3)
+        kwargs.setdefault('max_depth', 0)  # 0 means "infinite"
+        kwargs.setdefault('allow_redirects', True)
+        kwargs.setdefault('user_agent', True)
         super(DownloadTaskRunner, self).__init__(**kwargs)
 
     def match(self, task):
@@ -65,17 +75,39 @@ class DownloadTaskRunner(BaseTaskRunner):
         assert self.match(task)
         response = requests.get(task['url'])
 
+        ## We need to serialize this!
+        response_dict = {
+            'headers': dict(response.headers),
+            'content': response.content,
+            'encoding': response.encoding,
+            'ok': response.ok,
+            'status_code': response.status_code,
+            'reason': response.reason,
+            'url': response.url,  # might change
+        }
+
         ## Keep history of the followed "trail"
         trail = task.get('trail') or []
 
         yield ScrapingTask(
             url=task['url'],
             trail=trail,
-            response=response,
+            response=response_dict,
             tags=['wikipedia'])
 
 
 class LinkExtractionRunner(BaseTaskRunner):
+    def __init__(self, **kwargs):
+        kwargs.setdefault('find_urls_in_text', True)
+        kwargs.setdefault('deduplicate_links', True)
+        super(LinkExtractionRunner, self).__init__(**kwargs)
+
+        url_schemas = '|'.join(('http', 'https'))
+        url_chars = 'a-zA-Z0-9' + re.escape(':/&?')
+        self.re_url = re.compile(
+            '((?:{schema})://[{url_chars}]+)'.format(
+                schema=url_schemas, url_chars=url_chars))
+
     def match(self, task):
         return isinstance(task, ScrapingTask)
 
@@ -93,26 +125,48 @@ class LinkExtractionRunner(BaseTaskRunner):
                 continue
             yield url
 
+    def _find_urls_in_text(self, text):
+        for url in self.re_url.findall(text):
+            url = url.rstrip('.,;:')
+            yield url
+
+    def _extract_links(self, response):
+        content_type, params = cgi.parse_header(
+            response['headers'].get('content-type') or 'text/html')
+
+        if content_type == 'text/html':
+            tree = lxml.html.fromstring(response['content'])
+            base_url = response['url']
+            links = self._prepare_urls(
+                urlparse.urljoin(base_url, x)
+                for x in tree.xpath('//a/@href'))
+            for link in links:
+                yield link
+
+        elif content_type.startswith('text/'):
+            if self.conf['find_urls_in_text']:
+                for link in self._find_urls_in_text(response['content']):
+                    yield link
+
     def __call__(self, task):
         assert self.match(task)
-        content_type = task['response'].headers.get(
-            'Content-type', '').split(';')
+        response = task['response']
 
-        if content_type[0] == 'text/html':
-            tree = lxml.html.fromstring(task['response'].content)
-            base_url = task['url']
+        ## Trail that was followed to find this link
+        trail = []
+        if task.get('trail'):
+            trail.update(task['trail'])
+        trail.append(task['url'])
+        if response['url'] != task['url']:
+            trail.append(response['url'])
 
-            trail = []
-            if task.get('trail'):
-                trail.update(task['trail'])
-            trail.append(task['url'])
+        ## Extract all links in this page
+        links = self._extract_links(response)
+        if self.conf['deduplicate_links']:
+            links = set(links)
 
-            links = set(self._prepare_urls(
-                urlparse.urljoin(base_url, x)
-                for x in tree.xpath('//a/@href')
-            ))
-            for link in links:
-                yield DownloadTask(url=link, trail=trail)
+        ## todo: we could also "extract" links by going uphill
+        ## along the path, remove GET arguments, etc..
 
-        ## todo: for text/plain, we could extract URL look-alikes
-        ## todo: we could also yield links going "uphill" along the path
+        for link in links:
+            yield DownloadTask(url=link, trail=trail)
