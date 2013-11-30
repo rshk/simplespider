@@ -14,13 +14,11 @@ Crawlers will:
 * Yield objects found in the page
 """
 
-from collections import defaultdict, namedtuple
-from functools import wraps
+from collections import defaultdict
 import anydbm
 import copy
 import json
 import logging
-import re
 import sys
 import uuid
 
@@ -42,10 +40,10 @@ logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
 
-class BaseTask(dict):
-    __slots__ = []
+class BaseTask(object):
+    __slots__ = ['_id', '_type', '_attributes']
 
-    def __init__(self, **kwargs):
+    def __init__(self, task_id, **kwargs):
         """
         Base for the spider tasks.
         Tasks need to be hashable and immutable, so we can be sure,
@@ -56,92 +54,76 @@ class BaseTask(dict):
             Number of times this task should be retried upon failure.
             Defaults to 2 (for a total of 3 exectutions).
         """
+        if not isinstance(task_id, six.string_types):
+            raise TypeError("task_id must be a string!")
+        if isinstance(task_id, six.text_type):
+            ## We want binary strings as task ids
+            task_id = task_id.encode('utf-8')
+        self._id = task_id
+
+        ## We want to make sure we don't have references
+        ## to other objects that might be changed..
+        kwargs = copy.deepcopy(kwargs)
+
         kwargs.setdefault("retry", 2)
-        super(BaseTask, self).update(copy.deepcopy(kwargs))
 
-        ## We call hash() here to trigger an exception ASAP
-        ## if some value is not hashable..
-        hash(self)
+        self._attributes = kwargs
 
-    def __readonly_error(self):
-        raise TypeError("{0}.{1} object is readonly".format(
-            self.__class__.__module__,
-            self.__class__.__name__))
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def type(self):
+        if getattr(self, '_type', None) is None:
+            self._type = '.'.join((self.__class__.__module__,
+                                   self.__class__.__name__))
+        return self._type
+
+    def __getitem__(self, name):
+        return self._attributes[name]
 
     def __setitem__(self, name, value):
-        self.__readonly_error()
+        self._attributes[name] = value
 
     def __delitem__(self, name):
-        self.__readonly_error()
+        del self._attributes[name]
+
+    def get(self, *a, **kw):
+        return self._attributes.get(*a, **kw)
 
     def update(self, *a, **kw):
-        self.__readonly_error()
-
-    def __copy__(self):
-        return self.__class__(**self)
-
-    def __deepcopy__(self, memo):
-        return self.__class__(**self)
-
-    def clone(self, **kwargs):
-        new_kwargs = dict(**self)
-        new_kwargs.update(kwargs)
-        return self.__class__(**new_kwargs)
-
-    def __hash__(self):
-        return hash(tuple(self.iteritems()))
-
-    def __eq__(self, other):
-        #raise Exception("HERE")
-        return dict(**self) == dict(**other)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+        return self._attributes.update(*a, **kw)
 
     def __repr__(self):
-        return "{0}.{1}({2})".format(
-            self.__class__.__module__,
-            self.__class__.__name__,
+        return "{0}({1}, {2})".format(
+            self.type,
+            self.id,
             ', '.join('{0}={1!r}'.format(k, v)
-                      for k, v in sorted(tuple(self.iteritems()))))
+                      for k, v in sorted(tuple(self._attributes.iteritems()))))
 
-    def __getstate__(self):
-        return dict(**self)
+    def to_dict(self):
+        attrs = copy.deepcopy(self._attributes)
+        attrs['_id'] = self.id
+        attrs['_type'] = self.type
+        return attrs
 
-    def __setstate__(self, state):
-        dict.update(self, state)
+    # def __getstate__(self):
+    #     return dict(**self)
+
+    # def __setstate__(self, state):
+    #     dict.update(self, state)
 
 
-class DownloadTask(BaseTask):
-    __slots__ = []
-
+class BaseTaskRunner(object):
     def __init__(self, **kwargs):
-        """
-        A downloading task.
+        self.conf = kwargs
 
-        :param url: the URL to be retrieved
-        :param tags: tags for this download
-        """
-        kwargs.setdefault("url", None)
-        kwargs.setdefault("tags", None)
-        super(DownloadTask, self).__init__(**kwargs)
+    def match(self, task):
+        pass
 
-
-class ScrapingTask(BaseTask):
-    __slots__ = []
-
-    def __init__(self, **kwargs):
-        """
-        A scraping task.
-
-        :param url: URL from which the page was retrieved
-        :param tags: tags for this extraction
-        :param response: HTTP response for the page
-        """
-        kwargs.setdefault("url", None)
-        kwargs.setdefault("tags", None)
-        kwargs.setdefault("response", None)
-        super(ScrapingTask, self).__init__(**kwargs)
+    def __call__(self, task):
+        pass
 
 
 class BaseObject(dict):
@@ -149,14 +131,15 @@ class BaseObject(dict):
 
     __slots__ = []  # We don't want attributes
 
-    def __init__(self, **kwargs):
-        self.update(kwargs)
-
     def __repr__(self):
         return "{0}({1})".format(
-            '.'.join((self.__class__.__module__, self.__class__.__name__)),
+            self.type,
             ', '.join('{0}={1!r}'.format(name, value)
                       for name, value in sorted(self.iteritems())))
+
+    @property
+    def type(self):
+        return '.'.join((self.__class__.__module__, self.__class__.__name__))
 
     def __getstate__(self):
         """When pickling, we don't care about attributes"""
@@ -167,7 +150,7 @@ class BaseObject(dict):
 
 
 class RetryTask(Exception):
-    """Ask for the task to be retrieved"""
+    """Ask for the task to be retried"""
     pass
 
 
@@ -194,158 +177,112 @@ class Spider(object):
         self.conf = kwargs
 
         ## Registers of downloaders and scrapers
-        self._downloaders = []
-        self._scrapers = []
+        self._runners = []
 
         ## Keep a list of already downloaded
         ## URLs to prevent infinite recursion.
         ## todo: we need a smarter way to do this..
         self._already_done = set()
 
-    ## Register decorators
-    ##------------------------------------------------------------
+    def add_runners(self, runners):
+        self._runners.extend(runners)
 
-    def _register_decorator(self, register, func=None, **kw):
-        def decorator(f):
-            @wraps(f)
-            def wrapper(*a, **kw):
-                return f(*a, **kw)
-            wrapper.__dict__.update(kw)
-            register.append(wrapper)
-            return wrapper
-        if func is not None:
-            return decorator(func)
-        return decorator
-
-    def downloader(self, func=None, **kw):
-        kw.setdefault('urls', [])
-        kw.setdefault('tags', [])
-        return self._register_decorator(self._downloaders, func=func, **kw)
-
-    def scraper(self, func=None, **kw):
-        kw.setdefault('urls', [])
-        kw.setdefault('tags', [])
-        return self._register_decorator(self._scrapers, func=func, **kw)
-
-    ## Public interface methods
-    ##------------------------------------------------------------
-
-    def run_task(self, task):
-        """Run a given task"""
-        if isinstance(task, DownloadTask):
-            return self._run_download_task(task)
-        if isinstance(task, ScrapingTask):
-            return self._run_scraping_task(task)
-        raise TypeError("This task doesn't look like a task..")
+    def _get_runners(self, task):
+        logger.debug("Looking for runners suitable to run {0!r}".format(task))
+        logger.debug("We have {0} registered runners".format(
+            len(self._runners)))
+        for runner in self._runners:
+            logger.debug("Trying {0!r}".format(runner))
+            if runner.match(task):
+                logger.debug("Runner {0!r} matched".format(runner))
+                yield runner
 
     def queue_task(self, task):
         """Queue a task for later execution"""
-        self._task_queue.push(task)
+        logger.debug("Scheduling new task: {0!r}".format(task))
+        self._task_queue.push(task.id, task)
 
-    def pop_task(self):
-        """Get next task from the queue"""
-        return self._task_queue.pop()
+    # def pop_task(self):
+    #     """Get next task from the queue"""
+    #     return self._task_queue.pop()
+
+    def yield_tasks(self):
+        """Continue yielding tasks until queue is empty"""
+        while True:
+            try:
+                logger.debug("Task queue length is {0}".format(
+                    len(self._task_queue)))
+                task = self._task_queue.pop()
+                if task is None:
+                    raise IndexError("Null task received")
+            except IndexError:  # queue empty
+                logger.info("Queue empty. Terminating execution.")
+                return
+            else:
+                yield task
 
     def run(self):
         """Start execution of the queue, until no tasks are left"""
-        while True:
-            task = self.pop_task()
-            if task is None:
-                return  # nothing left..
+        for name, task in self.yield_tasks():
             self.run_task(task)
 
-    def _runner_ok_for_task(self, runner, task):
-        """Check whether the runner is ok for running a task"""
+    def run_task(self, task):
+        """Run a given task"""
 
-        ## If the task has a URL and the runner define
-        ## filters based on URLs, make sure the url matches
-        if task['url'] and runner.urls:
-            if not any(re.match(u, task['url']) for u in runner.urls):
-                return False
+        logger.info("Starting task execution: {0!r}".format(task))
 
-        ## If the task and the runner define tags, make sure
-        ## they have at least a tag in common
-        if task['tags'] and runner.tags:
-            if not any(t in task['tags'] for t in runner.tags):
-                return False
+        if not isinstance(task, BaseTask):
+            raise TypeError("This doesn't look like a task!")
 
-        ## Ok, this runner is suitable
-        return True
+        for runner in self._get_runners(task):
+            logger.debug("Starting execution with {0!r}".format(runner))
 
-    def _find_downloaders(self, task):
-        """Yield suitable downloaders for this task"""
-        ## todo: we should choose the "most matching" here..
-        for downloader in self._downloaders:
-            if self._runner_ok_for_task(downloader, task):
-                yield downloader
-
-    def _run_download_task(self, task):
-        logger.debug("Running download task: {0!r}".format(task))
-
-        if task in self._already_done:
-            logger.info("  -> Task already processed: {0}".format(task['url']))
-
-        for downloader in self._find_downloaders(task):
+            ## todo: we need to stop if asked to do so, etc.
             try:
-                self._wrap_task_execution(downloader, task)
+                self._wrap_task_execution(runner, task)
+
+            except AbortTask:
+                logger.info("Task {0!r} aborted".format(task))
+                return  # And never execute this anymore!
+
             except SkipRunner:
-                logger.debug("  -> Downloader asked to be skipped. "
-                             "Continuing on with next one.")
-                pass
-            else:
-                break
+                logger.debugger("Runner asked to be skipped")
+                pass  # Ok, let's just skip this..
 
-        self._already_done.add(task)
+            except Exception, e:
+                if not isinstance(e, RetryTask):
+                    ## We retry failing tasks, but we notify the user, if the
+                    ## exception wasn't a RetryTask
+                    logger.warning("Task failed with unknown exception. "
+                                   "Re-scheduling it for retry.")
+                    logger.exception("")
+                if task['retry'] > 0:
+                    logger.info("Task {0!r} to be retried "
+                                "{1} more times".format(task, task['retry']))
+                    new_task = copy.deepcopy(task)
+                    new_task['retry'] = task['retry'] - 1
+                    ## todo: we need to change the id, or the task will
+                    ##       never be executed again!
+                    self.queue_task(new_task)
+                else:
+                    logger.info("Max retries reached. Aborting task {0!r}.")
 
-    def _find_scrapers(self, task):
-        """
-        Yield all the scrapers with matching URLs and that
-        share at least one tag with the task.
-        """
-        for scraper in self._scrapers:
-            if self._runner_ok_for_task(scraper, task):
-                yield scraper
-
-    def _run_scraping_task(self, task):
-        logger.debug("Running scraping task: {0!r}".format(task))
-        for scraper in self._find_scrapers(task):
-            logger.debug("  -> Scraping with: {0!r}".format(scraper))
-            try:
-                self._wrap_task_execution(scraper, task)
-            except SkipRunner:  # we can safely ignore this..
-                pass
+        logger.info("Task execution successful")
 
     def _wrap_task_execution(self, runner, task):
         logger.info("Starting task: {0!r} (via {1!r})".format(task, runner))
-        try:
-            for item in runner(task):
-                if isinstance(item, BaseTask):
-                    logger.debug("  -> Got new task {0!r}".format(item))
-                    self.queue_task(item)
-                elif isinstance(item, BaseObject):
-                    logger.debug("  -> Got new object: {0!r}".format(item))
-                    self._store(item)
-                else:
-                    logger.debug("  -> I don't know what to do with: {0!r}"
-                                 "".format(item))
-        except AbortTask:
-            logger.info("Task {0!r} aborted".format(task))
-        except Exception, e:
-            if isinstance(e, SkipRunner):
-                ## This should be handled by caller..
-                raise
-            if not isinstance(e, RetryTask):
-                ## We retry failing tasks, but we notify the user, if the
-                ## exception wasn't a RetryTask
-                logger.warning("Task failed with unknown exception. Retrying.")
-                logger.exception("")
-            if task['retry'] > 0:
-                logger.info("Task {0!r} to be retried "
-                            "{1} more times".format(task, task['retry']))
-                new_task = task.clone(retry=task['retry'] - 1)
-                self.queue_task(new_task)
+        for item in runner(task):
+            if isinstance(item, BaseTask):
+                logger.debug("  -> Got new task {0!r}".format(item))
+                self.queue_task(item)
+
+            elif isinstance(item, BaseObject):
+                logger.debug("  -> Got new object: {0!r}".format(item))
+                self._store(item)
+
             else:
-                logger.info("Max retries reached. Aborting task {0!r}.")
+                logger.warning("  -> I don't know what to do with: {0!r}"
+                               "".format(item))
 
     def _store(self, obj):
         logger.debug("Storing object: {0!r}".format(obj))
@@ -354,12 +291,16 @@ class Spider(object):
 
     @property
     def _storage(self):
-        return self.conf.get('storage')
+        if not self.conf.get('storage'):
+            klass = self.conf.get('storage_manager', DictStorage)
+            self.conf['storage'] = klass()
+        return self.conf['storage']
 
     @property
     def _task_queue(self):
         if not self.conf.get('queue'):
-            self.conf['queue'] = ListQueueManager()
+            klass = self.conf.get('queue_manager', ListQueueManager)
+            self.conf['queue'] = klass()
         return self.conf['queue']
 
 
@@ -399,8 +340,11 @@ class BaseQueueManager(object):
         """Pops a task from the queue"""
         raise NotImplementedError
 
-    def push(self, task):
+    def push(self, name, task):
         """Pushes a task to the queue"""
+        raise NotImplementedError
+
+    def __len__(self):
         raise NotImplementedError
 
 
@@ -415,12 +359,18 @@ class ListQueueManager(object):
 
     def __init__(self):
         self._queue = []
+        self._dedup_set = set()
 
     def pop(self):
-        try:
-            return self._queue.pop(0)
-        except IndexError:
-            return None
+        return self._queue.pop(0)
 
-    def push(self, task):
-        self._queue.append(task)
+    def push(self, name, task):
+        if name in self._dedup_set:
+            logger.debug("Task {0!r} was already executed. "
+                         "Not queuing.".format(name))
+            return
+        self._dedup_set.add(name)
+        self._queue.append((name, task))
+
+    def __len__(self):
+        return len(self._queue)
