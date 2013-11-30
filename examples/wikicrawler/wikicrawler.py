@@ -100,7 +100,7 @@ spider = Spider()
 spider.add_runners([
     WikipediaDownloader(),
     WikipediaScraper(),
-    LinkExtractionRunner(),
+    LinkExtractionRunner(max_depth=3),
 ])
 
 
@@ -121,4 +121,4 @@ if __name__ == '__main__':
         spider.run()
 
     except KeyboardInterrupt:
-        print("\n\n----\nTerminated by the user.")
+        print("\n\nCtrl-C Caught -- quitting.")
