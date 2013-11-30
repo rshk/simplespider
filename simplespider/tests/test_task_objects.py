@@ -4,7 +4,8 @@ Tests for the task objects
 
 import pytest
 
-from simplespider import BaseTask, DownloadTask, ScrapingTask
+from simplespider import BaseTask
+from simplespider.web import DownloadTask, ScrapingTask
 
 from .fixtures import task_class, serializer_module  # noqa
 
