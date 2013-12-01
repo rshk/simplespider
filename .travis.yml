@@ -20,6 +20,10 @@ install:
 
 script: tox
 
+after_success:
+  - pip install coveralls
+  - coveralls
+
 matrix:
   allow_failures:
     - env: TOXENV=py31

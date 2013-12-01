@@ -3,6 +3,8 @@
 A library to build simple yet powerful spiders, in Python.
 
 [![Build Status](https://travis-ci.org/rshk/simplespider.png?branch=master)](https://travis-ci.org/rshk/simplespider)
+[![Coverage Status](https://coveralls.io/repos/rshk/simplespider/badge.png)](https://coveralls.io/r/rshk/simplespider)
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/rshk/simplespider/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
 
 -----
 
