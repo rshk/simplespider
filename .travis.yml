@@ -21,7 +21,7 @@ install:
 script: tox
 
 after_success:
-  - pip install coveralls
+  - pip install python-coveralls
   - coveralls
 
 matrix:
