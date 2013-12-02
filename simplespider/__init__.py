@@ -177,6 +177,8 @@ class Spider(object):
     def queue_task(self, task):
         """Queue a task for later execution"""
         logger.debug("Scheduling new task: {0!r}".format(task))
+        if not isinstance(task, BaseTask):
+            raise TypeError("This doesn't look like a task!")
         self._task_queue.push(task.id, task)
 
     def yield_tasks(self):
@@ -186,7 +188,8 @@ class Spider(object):
                 logger.debug("Task queue length is {0}".format(
                     len(self._task_queue)))
                 task = self._task_queue.pop()
-                if task is None:
+                if task is None:  # pragma: no cover
+                    ## This in the rare case of a misbehaving queue..
                     raise IndexError("Null task received")
             except IndexError:  # queue empty
                 logger.info("Queue empty. Terminating execution.")
@@ -219,7 +222,7 @@ class Spider(object):
                 return  # And never execute this anymore!
 
             except SkipRunner:
-                logger.debugger("Runner asked to be skipped")
+                logger.debug("Runner asked to be skipped")
                 pass  # Ok, let's just skip this..
 
             except Exception, e:
@@ -233,12 +236,14 @@ class Spider(object):
                     logger.info("Task {0!r} to be retried "
                                 "{1} more times".format(task, task['retry']))
                     new_task = copy.deepcopy(task)
+                    new_task._id += '[R]'  # to make sure this is run again
                     new_task['retry'] = task['retry'] - 1
                     ## todo: we need to change the id, or the task will
                     ##       never be executed again!
                     self.queue_task(new_task)
                 else:
                     logger.info("Max retries reached. Aborting task {0!r}.")
+                return  # do not continue with other runners..
 
         logger.info("Task execution successful")
 
