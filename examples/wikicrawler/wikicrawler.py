@@ -1,20 +1,24 @@
 """
 Example crawler for Wikipedia
+
+Install dependencies::
+
+    % pip install requests lxml
+
 """
 
+import cgi
 import logging
 import re
 import sys
 import urlparse
 
-## pip install requests lxml
-import requests
 import lxml.html
 
-from simplespider import Spider, DictStorage, AnydbmStorage, \
-    BaseObject, BaseTaskRunner
-from simplespider.web import DownloadTask, DownloadTaskRunner, \
-    ScrapingTask, LinkExtractionRunner
+from simplespider import Spider
+from simplespider.storage import DictStorage, AnydbmStorage, StoreObjectTask
+from simplespider.web import DownloadTask, BaseScraper, Downloader, \
+    LinkExtractor
 
 logger = logging.getLogger('simplespider.examples.wikicrawler')
 
@@ -55,15 +59,17 @@ def is_special_page(url):
     return False
 
 
-class WikipediaPage(BaseObject):
-    pass
+def WikipediaPage(data):
+    data['_type'] = 'wikipedia_page'
+    return StoreObjectTask(data=data)
 
 
-class WikipediaLink(BaseObject):
-    pass
+def WikipediaLink(data):
+    data['_type'] = 'wikipedia_link'
+    return StoreObjectTask(data=data)
 
 
-class WikipediaDownloader(DownloadTaskRunner):
+class WikipediaDownloader(Downloader):
     def match(self, task):
         if not super(WikipediaDownloader, self).match(task):
             return False
@@ -76,7 +82,7 @@ class WikipediaDownloader(DownloadTaskRunner):
         return True
 
 
-class WikipediaScraper(BaseTaskRunner):
+class WikipediaScraper(BaseScraper):
     def match(self, task):
         if not super(WikipediaScraper, self).match(task):
             return False
@@ -88,7 +94,10 @@ class WikipediaScraper(BaseTaskRunner):
 
     def __call__(self, task):
         assert self.match(task)
-        content_type = task['response'].headers['Content-type'].split(';')
+        response = task['response']
+        content_type, params = cgi.parse_header(
+            response['headers'].get('content-type') or 'text/html')
+        # content_type = task['response'].headers['Content-type'].split(';')
         if content_type[0] != 'text/html':
             return  # Nothing to do here..
         tree = lxml.html.fromstring(task['response'].content)
@@ -100,7 +109,7 @@ spider = Spider()
 spider.add_runners([
     WikipediaDownloader(),
     WikipediaScraper(),
-    LinkExtractionRunner(max_depth=3),
+    LinkExtractor(max_depth=3),
 ])
 
 
@@ -108,10 +117,10 @@ if __name__ == '__main__':
     try:
         ## Prepare the storage
         if len(sys.argv) > 1:
-            storage = AnydbmStorage(sys.argv[1])
+            storage = AnydbmStorage(path=sys.argv[1])
         else:
             storage = DictStorage()
-        spider.conf['storage'] = storage
+        spider.add_runners([storage])
 
         ## Queue the first task
         task = DownloadTask(url='http://en.wikipedia.org')
