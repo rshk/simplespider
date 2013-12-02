@@ -1,26 +1,13 @@
 """
-Simple spider.
+Simple spider core.
 
-Keeps & manages a collection of downloaders and scrapers.
-
-Downloaders will:
-
-* Receive a URL to download
-* Download it and yield crawling tasks
-
-Crawlers will:
-
-* Receive data from the crawling task
-* Yield objects found in the page
+The spider class will simply handle a queue of tasks
+and distribute them amongst a bunch of runners.
 """
 
-from collections import defaultdict
-import anydbm
 import copy
-import json
 import logging
 import sys
-import uuid
 
 import six
 
@@ -58,9 +45,6 @@ class BaseTask(object):
         """
         if not isinstance(task_id, six.string_types):
             raise TypeError("task_id must be a string!")
-        # if isinstance(task_id, six.text_type):
-        #     ## We want binary strings as task ids
-        #     task_id = task_id.encode('utf-8')
         self._id = task_id
 
         ## We want to make sure we don't have references
@@ -131,33 +115,10 @@ class BaseTaskRunner(object):
         self.conf = kwargs
 
     def match(self, task):
-        raise NotImplementedError
+        return True  # So we can safely use super() on this..
 
     def __call__(self, task):
-        raise NotImplementedError
-
-
-class BaseObject(dict):
-    """Base for the objects retrieved by the scraper"""
-
-    __slots__ = []  # We don't want attributes
-
-    def __repr__(self):
-        return "{0}({1})".format(
-            self.type,
-            ', '.join('{0}={1!r}'.format(name, value)
-                      for name, value in sorted(self.iteritems())))
-
-    @property
-    def type(self):
-        return '.'.join((self.__class__.__module__, self.__class__.__name__))
-
-    def __getstate__(self):
-        """When pickling, we don't care about attributes"""
-        return tuple(self.iteritems())
-
-    def __setstate__(self, state):
-        self.update(state)
+        return  # So we can safely use super() on this..
 
 
 class RetryTask(Exception):
@@ -212,10 +173,6 @@ class Spider(object):
         """Queue a task for later execution"""
         logger.debug("Scheduling new task: {0!r}".format(task))
         self._task_queue.push(task.id, task)
-
-    # def pop_task(self):
-    #     """Get next task from the queue"""
-    #     return self._task_queue.pop()
 
     def yield_tasks(self):
         """Continue yielding tasks until queue is empty"""
@@ -287,25 +244,9 @@ class Spider(object):
                 logger.debug("  -> Got new task {0!r}".format(item))
                 self.queue_task(item)
 
-            elif isinstance(item, BaseObject):
-                logger.debug("  -> Got new object: {0!r}".format(item))
-                self._store(item)
-
             else:
                 logger.warning("  -> I don't know what to do with: {0!r}"
                                "".format(item))
-
-    def _store(self, obj):
-        logger.debug("Storing object: {0!r}".format(obj))
-        if self._storage is not None:
-            self._storage.save(obj)
-
-    @property
-    def _storage(self):
-        if not self.conf.get('storage'):
-            klass = self.conf.get('storage_manager', DictStorage)
-            self.conf['storage'] = klass()
-        return self.conf['storage']
 
     @property
     def _task_queue(self):
@@ -313,37 +254,6 @@ class Spider(object):
             klass = self.conf.get('queue_manager', ListQueueManager)
             self.conf['queue'] = klass()
         return self.conf['queue']
-
-
-class BaseStorage(object):
-    def save(self, obj):
-        raise NotImplementedError
-
-    def sync(self, obj):
-        pass
-
-
-class DictStorage(BaseStorage):
-    def __init__(self):
-        self._storage = defaultdict(list)
-
-    def save(self, obj):
-        self._storage[type(obj).__name__].append(obj)
-
-
-class AnydbmStorage(BaseStorage):
-    def __init__(self, path):
-        self._storage_path = path
-        self._storage = anydbm.open(path, 'c')
-
-    def save(self, obj):
-        obj._type = type(obj).__name__
-        obj._id = getattr(obj, 'id', None) or str(uuid.uuid4())
-        storage_key = "{0}.{1}".format(obj._type, obj._id)
-        self._storage[storage_key] = json.dumps(obj.export())
-
-    def sync(self):
-        self._storage.sync()
 
 
 class BaseQueueManager(object):

@@ -21,6 +21,22 @@ def default_user_agent():
     return requests.utils.default_user_agent()
 
 
+class HttpResponse(dict):
+    def __init__(self, **kwargs):
+        kwargs.setdefault('headers', {})
+        kwargs.setdefault('content', '')
+        kwargs.setdefault('encoding', None)
+        kwargs.setdefault('ok', True)
+        kwargs.setdefault('status_code', None)
+        kwargs.setdefault('reason', '')
+        kwargs.setdefault('url', '')
+        self.update(kwargs)
+
+    def __repr__(self):
+        return "<HttpResponse {0!r} ({1!r})>".format(
+            self['status_code'], self['url'])
+
+
 class DownloadTask(BaseTask):
     __slots__ = []
 
@@ -54,12 +70,12 @@ class ScrapingTask(BaseTask):
         super(ScrapingTask, self).__init__(task_id, **kwargs)
 
 
-class DownloadTaskRunner(BaseTaskRunner):
+class Downloader(BaseTaskRunner):
     def __init__(self, **kwargs):
         kwargs.setdefault('max_depth', 0)  # 0 means "infinite"
         kwargs.setdefault('allow_redirects', True)
         kwargs.setdefault('user_agent', True)
-        super(DownloadTaskRunner, self).__init__(**kwargs)
+        super(Downloader, self).__init__(**kwargs)
 
     def match(self, task):
         if not isinstance(task, DownloadTask):
@@ -76,15 +92,15 @@ class DownloadTaskRunner(BaseTaskRunner):
         response = requests.get(task['url'])
 
         ## We need to serialize this!
-        response_dict = {
-            'headers': dict(response.headers),
-            'content': response.content,
-            'encoding': response.encoding,
-            'ok': response.ok,
-            'status_code': response.status_code,
-            'reason': response.reason,
-            'url': response.url,  # might change
-        }
+        response_dict = HttpResponse(
+            headers=dict(response.headers),
+            content=response.content,
+            encoding=response.encoding,
+            ok=response.ok,
+            status_code=response.status_code,
+            reason=response.reason,
+            url=response.url,  # might change
+        )
 
         ## Keep history of the followed "trail"
         trail = task.get('trail') or []
@@ -96,20 +112,22 @@ class DownloadTaskRunner(BaseTaskRunner):
             tags=['wikipedia'])
 
 
-class LinkExtractionRunner(BaseTaskRunner):
+class BaseScraper(BaseTaskRunner):
+    def match(self, task):
+        return isinstance(task, ScrapingTask)
+
+
+class LinkExtractor(BaseScraper):
     def __init__(self, **kwargs):
         kwargs.setdefault('find_urls_in_text', True)
         kwargs.setdefault('deduplicate_links', True)
-        super(LinkExtractionRunner, self).__init__(**kwargs)
+        super(LinkExtractor, self).__init__(**kwargs)
 
         url_schemas = '|'.join(('http', 'https'))
         url_chars = 'a-zA-Z0-9' + re.escape(':/&?')
         self.re_url = re.compile(
             '((?:{schema})://[{url_chars}]+)'.format(
                 schema=url_schemas, url_chars=url_chars))
-
-    def match(self, task):
-        return isinstance(task, ScrapingTask)
 
     def _prepare_urls(self, raw_urls):
         return self._filter_urls(self._clean_url(x) for x in raw_urls)
@@ -155,7 +173,7 @@ class LinkExtractionRunner(BaseTaskRunner):
         ## Trail that was followed to find this link
         trail = []
         if task.get('trail'):
-            trail.update(task['trail'])
+            trail.extend(task['trail'])
         trail.append(task['url'])
         if response['url'] != task['url']:
             trail.append(response['url'])
