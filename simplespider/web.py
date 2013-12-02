@@ -7,7 +7,7 @@ import logging
 import re
 import urlparse
 
-import lxml
+import lxml.html
 import requests
 import requests.utils
 
@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 def default_user_agent():
-    return ''.join('spydi')
-    return requests.utils.default_user_agent()
+    from simplespider import __version__ as version
+    return ' '.join(('simplespider/' + version,
+                    requests.utils.default_user_agent()))
 
 
 class HttpResponse(dict):
@@ -89,7 +90,10 @@ class Downloader(BaseTaskRunner):
 
     def __call__(self, task):
         assert self.match(task)
-        response = requests.get(task['url'])
+        headers = {
+            'User-agent': default_user_agent(),
+        }
+        response = requests.get(task['url'], headers=headers)
 
         ## We need to serialize this!
         response_dict = HttpResponse(
