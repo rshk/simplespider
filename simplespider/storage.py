@@ -11,10 +11,10 @@ from simplespider import BaseTask, BaseTaskRunner
 
 
 class StoreObjectTask(BaseTask):
-    def __init__(self, **kwargs):
+    def __init__(self, task_id=None, **kwargs):
         if not kwargs.get('data'):
             raise TypeError("The 'data' argument is required!")
-        super(StoreObjectTask, self).__init__(**kwargs)
+        super(StoreObjectTask, self).__init__(task_id, **kwargs)
 
 
 class DictStorage(BaseTaskRunner):
@@ -57,8 +57,8 @@ class AnydbmStorage(BaseTaskRunner):
     def __call__(self, task):
         obj = task['data']
         obj['_type'] = obj.get('_type') or type(obj).__name__
-        obj['_id'] = obj.get('id') or str(uuid.uuid4())
+        obj['_id'] = obj.get('_id') or obj.get('id') or str(uuid.uuid4())
         storage_key = "{0}.{1}".format(obj['_type'], obj['_id'])
-        self._storage[storage_key] = json.dumps(obj.export())
+        self._storage[storage_key] = json.dumps(obj)
         if self.conf['synchronous']:
             self._storage.sync()

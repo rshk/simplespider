@@ -8,6 +8,7 @@ and distribute them amongst a bunch of runners.
 import copy
 import logging
 import sys
+import uuid
 
 import six
 
@@ -32,7 +33,7 @@ logger.setLevel(logging.DEBUG)
 class BaseTask(object):
     __slots__ = ['_id', '_type', '_attributes']
 
-    def __init__(self, task_id, **kwargs):
+    def __init__(self, task_id=None, **kwargs):
         """
         Base for the spider tasks.
         Tasks need to be hashable and immutable, so we can be sure,
@@ -43,8 +44,12 @@ class BaseTask(object):
             Number of times this task should be retried upon failure.
             Defaults to 2 (for a total of 3 exectutions).
         """
+        if task_id is None:
+            task_id = str(uuid.uuid4())
+
         if not isinstance(task_id, six.string_types):
             raise TypeError("task_id must be a string!")
+
         self._id = task_id
 
         ## We want to make sure we don't have references
