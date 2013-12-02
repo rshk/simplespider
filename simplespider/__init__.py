@@ -21,7 +21,7 @@ handler.setLevel(logging.DEBUG)
 try:
     from cool_logging.formatters import ConsoleColorFormatter
     # pip install cool_logging==0.2-beta
-except ImportError:
+except ImportError:  # pragma: no cover
     handler.setFormatter(logging.Formatter(
         "%(levelname)s %(filename)s:%(lineno)d %(funcName)s: %(message)s"))
 else:

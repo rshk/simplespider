@@ -63,5 +63,5 @@ class AnydbmStorage(BaseTaskRunner):
         if self.conf['synchronous']:
             try:
                 self._storage.sync()
-            except AttributeError:
+            except AttributeError:  # pragma: no cover
                 pass  # On Py3k this method disappeared..
