@@ -1,3 +1,5 @@
+## Travis CI configuration for rshk/simplespider
+
 language: python
 
 branches:
