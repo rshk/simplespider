@@ -61,4 +61,7 @@ class AnydbmStorage(BaseTaskRunner):
         storage_key = "{0}.{1}".format(obj['_type'], obj['_id'])
         self._storage[storage_key] = json.dumps(obj)
         if self.conf['synchronous']:
-            self._storage.sync()
+            try:
+                self._storage.sync()
+            except AttributeError:
+                pass  # On Py3k this method disappeared..

@@ -6,6 +6,7 @@ import anydbm
 import json
 
 import pytest
+import six
 
 from simplespider.storage import StoreObjectTask, DictStorage, AnydbmStorage
 
@@ -62,10 +63,16 @@ def test_anydbm_storage(tmpdir):
     del storage  # Should sync during GC
 
     db = anydbm.open(dbfile, 'r')
-    assert json.loads(db['pet.cat']) == cat
-    assert json.loads(db['pet.dog']) == dog
-    assert json.loads(db['food.chicken']) == chicken
-    assert json.loads(db['food.cow']) == cow
+
+    def json_loads(data):
+        if isinstance(data, six.binary_type):
+            data = data.decode('utf-8')
+        return json.loads(data)
+
+    assert json_loads(db['pet.cat']) == cat
+    assert json_loads(db['pet.dog']) == dog
+    assert json_loads(db['food.chicken']) == chicken
+    assert json_loads(db['food.cow']) == cow
 
 
 def test_anydbm_storage_exc():
