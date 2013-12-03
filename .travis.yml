@@ -29,4 +29,5 @@ after_success:
 matrix:
   allow_failures:
     - env: TOXENV=py31
+    - env: TOXENV=py32
     - env: TOXENV=pypy
