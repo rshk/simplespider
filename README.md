@@ -4,7 +4,6 @@ A library to build simple yet powerful spiders, in Python.
 
 [![Build Status](https://travis-ci.org/rshk/simplespider.png?branch=master)](https://travis-ci.org/rshk/simplespider)
 [![Coverage Status](https://coveralls.io/repos/rshk/simplespider/badge.png)](https://coveralls.io/r/rshk/simplespider)
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/rshk/simplespider/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
 
 -----
 
@@ -175,3 +174,6 @@ Side note: The recommended way of running the ``wikicrawler.py`` script is:
 so that, when execution terminates (or you hit ``Ctrl-C``), you'll drop in the
 interactive interpreter, from which you can play with the ``spider`` object
 (and even re-start execution, by calling ``spider.run()``).
+
+-----
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/rshk/simplespider/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
