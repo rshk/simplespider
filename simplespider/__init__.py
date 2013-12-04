@@ -276,7 +276,7 @@ class Spider(object):
 
     @property
     def _task_queue(self):
-        if not self.conf.get('queue'):
+        if self.conf.get('queue') is None:
             klass = self.conf.get('queue_manager', ListQueueManager)
             self.conf['queue'] = klass()
         return self.conf['queue']
