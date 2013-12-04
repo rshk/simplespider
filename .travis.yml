@@ -10,6 +10,9 @@ python:
   - "2.7"
 
 env:
+  global:
+    - KOMBU_URL=memory://
+
   matrix:
     - TOXENV=py26
     - TOXENV=py27
