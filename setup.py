@@ -27,10 +27,14 @@ class PyTest(TestCommand):
         _test_args = [
             '--verbose',
             '--ignore=build',
-            #'--cov={0}'.format(self.test_package_name),
-            #'--cov-report=term-missing',
-            '--pep8',
+
+            # We want coverage for coveralls report
+            '--cov={0}'.format(self.test_package_name),
+            '--cov-report=term-missing',
         ]
+        if sys.version_info[0] < 3:
+            # Don't run pep8 checks on 2to3-generated code..
+            _test_args['--pep8']
         extra_args = os.environ.get('PYTEST_EXTRA_ARGS')
         if extra_args is not None:
             _test_args.extend(extra_args.split())
