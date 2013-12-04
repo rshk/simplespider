@@ -100,12 +100,14 @@ class BaseTask(object):
             module, name = data.pop('_type').split(':')
             mod = __import__(module, globals(), globals(), [name])
             klass = getattr(mod, name)
-            if not isinstance(klass, BaseTask):
+            if not issubclass(klass, BaseTask):
                 raise TypeError("Invalid object: not a BaseTask")
         else:
             klass = cls
-        task_id = data.pop('_id', None)
-        return klass(task_id, **data)
+        task_id = data.pop('task_id', None)
+        data.pop('_id', None)
+        data.pop('_type', None)
+        return klass(task_id=task_id, **data)
 
     def to_dict(self):
         attrs = copy.deepcopy(self._attributes)
