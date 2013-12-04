@@ -67,7 +67,7 @@ class BaseTask(object):
     @property
     def type(self):
         if getattr(self, '_type', None) is None:
-            self._type = '.'.join((self.__class__.__module__,
+            self._type = ':'.join((self.__class__.__module__,
                                    self.__class__.__name__))
         return self._type
 
@@ -92,6 +92,20 @@ class BaseTask(object):
             self.id,
             ', '.join('{0}={1!r}'.format(k, v)
                       for k, v in sorted(tuple(self._attributes.iteritems()))))
+
+    @classmethod
+    def from_dict(cls, data):
+        data = copy.deepcopy(data)  # so we can safely modify..
+        if '_type' in data:
+            module, name = data.pop('_type').split(':')
+            mod = __import__(module, globals(), globals(), [name])
+            klass = getattr(mod, name)
+            if not isinstance(klass, BaseTask):
+                raise TypeError("Invalid object: not a BaseTask")
+        else:
+            klass = cls
+        task_id = data.pop('_id', None)
+        return klass(task_id, **data)
 
     def to_dict(self):
         attrs = copy.deepcopy(self._attributes)

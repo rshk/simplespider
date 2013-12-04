@@ -93,9 +93,9 @@ def simple_website(request):
 @pytest.fixture
 def web_spider():
     class LoggingSpider(Spider):
-        def __init__(self):
+        def __init__(self, **kw):
             self._log = []
-            super(LoggingSpider, self).__init__()
+            super(LoggingSpider, self).__init__(**kw)
 
         def _wrap_task_execution(self, runner, task):
             self._log.append((runner, task))
@@ -132,28 +132,28 @@ def test_simple_spider_run(simple_website, web_spider):
     downloader, scraper = web_spider._testing['runners']
 
     name, task = tasks.next()
-    assert name == 'simplespider.web.DownloadTask:http://127.0.0.1:5001/'
+    assert name == 'simplespider.web:DownloadTask:http://127.0.0.1:5001/'
     assert isinstance(task, DownloadTask)
     assert task['url'] == 'http://127.0.0.1:5001/'
     web_spider.run_task(task)
     assert web_spider._log.pop(0) == (downloader, task)
 
     name, task = tasks.next()
-    assert name == 'simplespider.web.ScrapingTask:http://127.0.0.1:5001/'
+    assert name == 'simplespider.web:ScrapingTask:http://127.0.0.1:5001/'
     assert isinstance(task, ScrapingTask)
     assert task['url'] == 'http://127.0.0.1:5001/'
     web_spider.run_task(task)
     assert web_spider._log.pop(0) == (scraper, task)
 
     name, task = tasks.next()
-    assert name == 'simplespider.web.DownloadTask:http://127.0.0.1:5001/hello'
+    assert name == 'simplespider.web:DownloadTask:http://127.0.0.1:5001/hello'
     assert isinstance(task, DownloadTask)
     assert task['url'] == 'http://127.0.0.1:5001/hello'
     web_spider.run_task(task)
     assert web_spider._log.pop(0) == (downloader, task)
 
     name, task = tasks.next()
-    assert name == 'simplespider.web.ScrapingTask:http://127.0.0.1:5001/hello'
+    assert name == 'simplespider.web:ScrapingTask:http://127.0.0.1:5001/hello'
     assert isinstance(task, ScrapingTask)
     assert task['url'] == 'http://127.0.0.1:5001/hello'
     web_spider.run_task(task)

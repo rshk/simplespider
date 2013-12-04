@@ -16,7 +16,7 @@ def test_basetask_init(task):
 
     assert task.to_dict() == {
         '_id': 'task-001',
-        '_type': 'simplespider.BaseTask',
+        '_type': 'simplespider:BaseTask',
         'retry': 2,
         'url': 'http://example.com',
         'foo': 'bar',
@@ -40,7 +40,7 @@ def test_basetask_update(task):
 
     assert task.to_dict() == {
         '_id': 'task-001',
-        '_type': 'simplespider.BaseTask',
+        '_type': 'simplespider:BaseTask',
         'retry': 2,
         'url': 'http://example.com',
         'foo': 'new_foo',
@@ -75,7 +75,7 @@ def test_basetask_validation():
 
 
 def test_basetask_repr(task):
-    assert repr(task) == "simplespider.BaseTask('task-001', "\
+    assert repr(task) == "simplespider:BaseTask('task-001', "\
         "foo='bar', retry=2, url='http://example.com')"
 
 
