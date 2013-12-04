@@ -283,6 +283,9 @@ class Spider(object):
 
 
 class BaseQueueManager(object):
+    def __init__(self, **kwargs):
+        self.conf = kwargs
+
     def pop(self):
         """Pops a task from the queue"""
         raise NotImplementedError
