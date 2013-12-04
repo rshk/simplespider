@@ -2,6 +2,8 @@
 Kombu-based tasks queue
 """
 
+from __future__ import absolute_import
+
 from kombu import Connection
 
 from simplespider import BaseQueueManager, BaseTask
@@ -45,9 +47,13 @@ class KombuQueueSimple(BaseQueueManager):
         raw_task = message.payload
         task = BaseTask.from_dict(raw_task)
         message.ack()
-        return task
+        return task.id, task
 
     def push(self, name, task):
+        assert name == task.id
         self.queue.put(task.to_dict(),
                        serializer=self.conf['serializer'],
                        compression=self.conf['compression'])
+
+    def __len__(self):
+        return len(self.queue)

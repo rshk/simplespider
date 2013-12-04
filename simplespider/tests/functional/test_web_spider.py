@@ -12,6 +12,7 @@ import requests
 from simplespider import Spider
 from simplespider.web import DownloadTask, Downloader, LinkExtractor, \
     ScrapingTask
+from simplespider.tests.functional.fixtures import queue  # noqa
 
 
 @pytest.fixture(scope='function')
@@ -91,7 +92,7 @@ def simple_website(request):
 
 
 @pytest.fixture
-def web_spider():
+def web_spider(queue):
     class LoggingSpider(Spider):
         def __init__(self, **kw):
             self._log = []
@@ -101,7 +102,7 @@ def web_spider():
             self._log.append((runner, task))
             super(LoggingSpider, self)._wrap_task_execution(runner, task)
 
-    spider = LoggingSpider()
+    spider = LoggingSpider(queue=queue)
     spider._testing = {
         'runners': [Downloader(), LinkExtractor()]
     }
