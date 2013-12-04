@@ -41,7 +41,7 @@ class HttpResponse(dict):
 class DownloadTask(BaseTask):
     __slots__ = []
 
-    def __init__(self, **kwargs):
+    def __init__(self, task_id=None, **kwargs):
         """
         A downloading task.
 
@@ -51,14 +51,15 @@ class DownloadTask(BaseTask):
         """
         kwargs.setdefault("url", None)
         kwargs.setdefault("retry", 2)
-        task_id = ':'.join((self.type, kwargs['url']))
+        if task_id is None:
+            task_id = ':'.join((self.type, kwargs['url']))
         super(DownloadTask, self).__init__(task_id, **kwargs)
 
 
 class ScrapingTask(BaseTask):
     __slots__ = []
 
-    def __init__(self, **kwargs):
+    def __init__(self, task_id=None, **kwargs):
         """
         A scraping task.
 
@@ -67,7 +68,8 @@ class ScrapingTask(BaseTask):
         """
         kwargs.setdefault("url", None)
         kwargs.setdefault("response", None)
-        task_id = ':'.join((self.type, kwargs['url']))
+        if task_id is None:
+            task_id = ':'.join((self.type, kwargs['url']))
         super(ScrapingTask, self).__init__(task_id, **kwargs)
 
 
